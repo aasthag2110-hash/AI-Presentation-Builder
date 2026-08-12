@@ -1,7 +1,9 @@
 import json
 from typing import TypeVar
 
-from openai import APITimeoutError, APIConnectionError, APIStatusError, AuthenticationError, OpenAI, RateLimitError
+import httpx
+from google import genai
+from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
@@ -19,10 +21,20 @@ class CandidateError(Exception):
         self.candidate = candidate
 
 
-class OpenAIService:
-    def __init__(self, settings: Settings, client: OpenAI | None = None):
+class GeminiService:
+    def __init__(self, settings: Settings, client: genai.Client | None = None):
         self.settings = settings
-        self.client = client or (OpenAI(api_key=settings.openai_api_key, timeout=60.0) if settings.openai_api_key else None)
+        self.client = client or (
+            genai.Client(
+                api_key=settings.gemini_api_key,
+                http_options=types.HttpOptions(
+                    timeout=60_000,
+                    retry_options=types.HttpRetryOptions(attempts=1),
+                ),
+            )
+            if settings.gemini_api_key
+            else None
+        )
 
     def generate_deck(self, request: GenerateDeckRequest) -> GenerateDeckResponse:
         return self._with_repair(DECK_SYSTEM_PROMPT, build_deck_prompt(request), GenerateDeckResponse,
@@ -49,22 +61,22 @@ class OpenAIService:
 
     def _request(self, system: str, prompt: str, schema: type[T]) -> T:
         if self.client is None:
-            raise AppError(503, "AI_FAILURE", "OpenAI is not configured or unavailable")
+            raise AppError(503, "AI_FAILURE", "Gemini is not configured or unavailable")
         try:
-            completion = self.client.beta.chat.completions.parse(
+            response = self.client.models.generate_content(
                 model=self.settings.llm_model,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                response_format=schema,
-                timeout=60.0,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                ),
             )
-            message = completion.choices[0].message
-            if getattr(message, "refusal", None):
-                raise AppError(503, "AI_FAILURE", "OpenAI returned no usable output")
-            parsed = getattr(message, "parsed", None)
+            parsed = getattr(response, "parsed", None)
             if parsed is None:
-                content = getattr(message, "content", None)
+                content = getattr(response, "text", None)
                 if not content:
-                    raise AppError(503, "AI_FAILURE", "OpenAI returned no usable output")
+                    raise AppError(503, "AI_FAILURE", "Gemini returned no usable output")
                 try:
                     parsed = schema.model_validate_json(content)
                 except (ValidationError, ValueError) as exc:
@@ -75,8 +87,8 @@ class OpenAIService:
                 raise CandidateError(str(exc), parsed) from exc
         except CandidateError:
             raise
-        except (APITimeoutError, APIConnectionError, AuthenticationError, RateLimitError, APIStatusError, IndexError) as exc:
-            raise AppError(503, "AI_FAILURE", "OpenAI is unavailable or returned no usable output") from exc
+        except (errors.APIError, httpx.TimeoutException, httpx.NetworkError, IndexError) as exc:
+            raise AppError(503, "AI_FAILURE", "Gemini is unavailable or returned no usable output") from exc
 
     @staticmethod
     def _validate_deck(deck: GenerateDeckResponse, count: int) -> GenerateDeckResponse:

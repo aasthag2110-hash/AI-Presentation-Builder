@@ -1,6 +1,6 @@
 # AI Presentation Generation Service
 
-Internal, stateless FastAPI service that generates complete presentation outlines and individual slides through OpenAI. It owns no database or files, creates no presentation IDs, and should only be called by the Orchestrator.
+Internal, stateless FastAPI service that generates complete presentation outlines and individual slides through the Gemini API. It owns no database or files, creates no presentation IDs, and should only be called by the Orchestrator.
 
 ## Setup and run
 
@@ -14,7 +14,7 @@ cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8082}"
 ```
 
-Environment variables are `OPENAI_API_KEY` (required for generation), `LLM_MODEL` (default `gpt-4o-mini`), and `PORT` (default `8082`). `/health` never calls OpenAI.
+Environment variables are `GEMINI_API_KEY` (required for generation), `LLM_MODEL` (default `gemini-2.5-flash`), and `PORT` (default `8082`). `/health` never calls Gemini.
 
 ## API contracts
 
@@ -42,5 +42,5 @@ Docker:
 
 ```bash
 docker build -t ai-service .
-docker run --rm -p 8082:8082 -e OPENAI_API_KEY="$OPENAI_API_KEY" ai-service
+docker run --rm -p 8082:8082 -e GEMINI_API_KEY="$GEMINI_API_KEY" ai-service
 ```

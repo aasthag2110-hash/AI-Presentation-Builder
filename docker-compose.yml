@@ -59,8 +59,8 @@ services:
       dockerfile: Dockerfile
     image: presentation-ai-service:local
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
       PORT: "8082"
     ports:
       - "${AI_SERVICE_PORT:-8082}:8082"

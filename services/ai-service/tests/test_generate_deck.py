@@ -3,11 +3,11 @@ from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
-from openai import APITimeoutError
+import httpx
 
 from app.config import Settings
 from app.main import app, get_ai_service
-from app.services.openai_service import OpenAIService
+from app.services.gemini_service import GeminiService
 from tests.conftest import deck, parsed_response
 
 
@@ -35,10 +35,10 @@ def test_invalid_requests_use_envelope(client, deck_request, change):
 
 
 def service_with_responses(*responses):
-    parse = Mock(side_effect=[parsed_response(item) for item in responses])
+    generate = Mock(side_effect=[parsed_response(item) for item in responses])
     client = Mock()
-    client.beta.chat.completions.parse = parse
-    return OpenAIService(Settings(openai_api_key="test"), client), parse
+    client.models.generate_content = generate
+    return GeminiService(Settings(gemini_api_key="test"), client), generate
 
 
 def test_malformed_first_result_repairs_once(deck_request):
@@ -65,10 +65,9 @@ def test_two_invalid_results_return_422(deck_request):
 
 
 def test_provider_timeout_is_503_without_repair(deck_request):
-    request = Mock()
-    parse = Mock(side_effect=APITimeoutError(request=request))
-    provider = Mock(); provider.beta.chat.completions.parse = parse
-    service = OpenAIService(Settings(openai_api_key="test"), provider)
+    parse = Mock(side_effect=httpx.ReadTimeout("timed out", request=Mock()))
+    provider = Mock(); provider.models.generate_content = parse
+    service = GeminiService(Settings(gemini_api_key="test"), provider)
     app.dependency_overrides[get_ai_service] = lambda: service
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post("/internal/ai/generate-deck", json=deck_request)

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import Settings, get_settings
 from app.main import app, get_ai_service
 from app.models import GenerateDeckResponse, Slide
 
@@ -43,6 +44,7 @@ class FakeService:
 @pytest.fixture
 def client():
     app.dependency_overrides[get_ai_service] = lambda: FakeService()
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -65,4 +67,4 @@ def slide_request():
 
 
 def parsed_response(value):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=value, content=None, refusal=None))])
+    return SimpleNamespace(parsed=value, text=None)

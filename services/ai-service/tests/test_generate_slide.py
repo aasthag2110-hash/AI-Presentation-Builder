@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import app, get_ai_service
-from app.services.openai_service import OpenAIService
+from app.services.gemini_service import GeminiService
 from tests.conftest import parsed_response, slide
 
 
@@ -20,8 +20,8 @@ def test_single_slide_is_bare_object(client, slide_request):
 def test_wrong_slide_number_triggers_repair(slide_request):
     first = slide(1)
     parse = Mock(side_effect=[parsed_response(first), parsed_response(slide(2))])
-    provider = Mock(); provider.beta.chat.completions.parse = parse
-    service = OpenAIService(Settings(openai_api_key="test"), provider)
+    provider = Mock(); provider.models.generate_content = parse
+    service = GeminiService(Settings(gemini_api_key="test"), provider)
     app.dependency_overrides[get_ai_service] = lambda: service
     with TestClient(app) as client:
         response = client.post("/internal/ai/generate-slide", json=slide_request)
