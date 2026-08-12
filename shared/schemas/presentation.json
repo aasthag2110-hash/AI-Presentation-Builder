@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Presentation",
+  "type": "object",
+  "required": [
+    "presentation_id",
+    "title",
+    "slides"
+  ],
+  "properties": {
+    "presentation_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "slides": {
+      "type": "array",
+      "items": {
+        "$ref": "slide.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

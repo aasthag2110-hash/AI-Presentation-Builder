@@ -1,0 +1,61 @@
+services:
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: pres_user
+      POSTGRES_PASSWORD: pres_pass
+      POSTGRES_DB: presentations
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  ai-service:
+    build: ./services/ai-service
+    ports:
+      - "8082:8082"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_MODEL: gpt-4o-mini
+
+  document-service:
+    build: ./services/document-service
+    ports:
+      - "8083:8083"
+
+  presentation-service:
+    build: ./services/presentation-service
+    ports:
+      - "8081:8081"
+    environment:
+      AI_SERVICE_URL: http://ai-service:8082
+      DOCUMENT_SERVICE_URL: http://document-service:8083
+      DATABASE_URL: postgresql://pres_user:pres_pass@postgres:5432/presentations
+    depends_on:
+      - postgres
+      - ai-service
+      - document-service
+
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      ORCHESTRATOR_URL: http://presentation-service:8081
+      DOCUMENT_SERVICE_URL: http://document-service:8083
+    depends_on:
+      - presentation-service
+      - document-service
+
+  web-app:
+    build: ./services/web-app
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: http://localhost:8080
+    depends_on:
+      - api-gateway
+
+volumes:
+  pgdata:
