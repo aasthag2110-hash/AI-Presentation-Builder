@@ -1,16 +1,69 @@
+name: ai-presentation-builder
+
 services:
-  ai-service:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pres_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pres_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-presentations}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  presentation-service:
     build:
-      context: ../ai-service
+      context: ./services/presentation-service
+      dockerfile: Dockerfile
+    environment:
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8082}
+      DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8083}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pres_user}:${POSTGRES_PASSWORD:-pres_pass}@postgres:5432/${POSTGRES_DB:-presentations}
+      PORT: 8081
+      UPSTREAM_TIMEOUT_SECONDS: ${UPSTREAM_TIMEOUT_SECONDS:-60}
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+    ports:
+      - "${PRESENTATION_SERVICE_PORT:-8081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json, urllib.request;
+          data=json.load(urllib.request.urlopen('http://localhost:8081/health'));
+          raise SystemExit(0 if data.get('db') == 'connected' else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  ai-service:
+    profiles: ["full-stack"]
+    build:
+      context: ./services/ai-service
       dockerfile: Dockerfile
     image: presentation-ai-service:local
-    ports:
-      - "8082:8082"
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       PORT: "8082"
-    restart: unless-stopped
+    ports:
+      - "${AI_SERVICE_PORT:-8082}:8082"
     healthcheck:
       test:
         - CMD
@@ -21,3 +74,21 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  # Member 5: enabled after services/document-service is added.
+  document-service:
+    profiles: ["full-stack"]
+    build:
+      context: ./services/document-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 8083
+      DOCUMENT_TTL_HOURS: ${DOCUMENT_TTL_HOURS:-1}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-10}
+    ports:
+      - "${DOCUMENT_SERVICE_PORT:-8083}:8083"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
